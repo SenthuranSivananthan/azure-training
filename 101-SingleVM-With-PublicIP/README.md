@@ -47,4 +47,4 @@ az group deployment create -g training --template-file 005-deploy.json
 
 2. Harden the NSG rule(s) such that it will allow SSH access only from your IP addresses.
 
-3. Public IP is setup as dynamic.  What happens when the VM is deallocated?  What do you need to do to make the public IP is predictable?
+3. Public IP is setup as dynamic.  What happens when the VM is deallocated?  How can the public IP be more predictable?
