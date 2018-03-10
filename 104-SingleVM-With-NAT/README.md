@@ -41,6 +41,6 @@ az group deployment create -g training --template-file 004-deploy.json
 
 1. How to add another VM with NAT on port 6000?
 
-2. How to ensure that SSH can only be performed through the Load Balancer?
+2. How to force SSH through the Load Balancer?
 
 3. How to create a static IP with the Load Balancer?
