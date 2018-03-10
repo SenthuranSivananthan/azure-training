@@ -1,0 +1,108 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {},
+    "variables": {},
+    "resources": [
+        {
+            "apiVersion": "2017-10-01",
+            "type": "Microsoft.Network/virtualNetworks",
+            "name": "vnet",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "10.0.0.0/16"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "frontend",
+                        "properties": {
+                            "addressPrefix": "10.0.0.0/24"
+                        }
+                    },
+                    {
+                        "name": "backend",
+                        "properties": {
+                            "addressPrefix": "10.0.1.0/24"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2017-10-01",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "name": "public-lb-ip",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic",
+                "dnsSettings": {
+                    "domainNameLabel": "[uniqueString(resourceGroup().name)]"
+                }
+            }
+        },
+        {
+            "name": "public-lb",
+            "type": "Microsoft.Network/loadBalancers",
+            "apiVersion": "2017-10-01",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Basic"
+            },
+            "dependsOn": [
+                "Microsoft.Network/publicIPAddresses/public-lb-ip"
+            ],
+            "properties": {
+                "backendAddressPools": [
+                    {
+                        "name": "backend"
+                    }
+                ],
+                "frontendIPConfigurations": [
+                    {
+                        "name": "LBFrontEnd-1",
+                        "properties": {
+                            "publicIPAddress":{
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses','public-lb-ip')]"
+                            }
+                        }
+                    }
+                ],
+                "probes": [
+                    {
+                        "name": "ssh-probe-on-port-22",
+                        "properties": {
+                            "protocol": "Tcp",
+                            "port": 22,
+                            "intervalInSeconds": 5,
+                            "numberOfProbes": 2
+                        }
+                    }
+                ],
+                "loadBalancingRules": [
+                    {
+                        "name": "lbrule-port-22",
+                        "properties": {
+                            "frontendIPConfiguration": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers','public-lb'), '/frontendIPConfigurations/LBFrontEnd-1')]"
+                            },
+                            "backendAddressPool": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers','public-lb'), '/backendAddressPools/backend')]"
+                            },
+                            "probe": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers','public-lb'), '/probes/ssh-probe-on-port-22')]"
+                            },
+                            "protocol": "Tcp",
+                            "loadDistribution": "Default",
+                            "frontendPort": 22,
+                            "backendPort": 22
+                        }
+                    }
+                ]
+            }
+        }
+    ],
+    "outputs": {}
+}
