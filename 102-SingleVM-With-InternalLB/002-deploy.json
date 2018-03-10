@@ -58,7 +58,7 @@
                 ],
                 "probes": [
                     {
-                        "name": "iis-probe-on-port-80",
+                        "name": "web-probe-on-port-80",
                         "properties": {
                             "protocol": "http",
                             "port": 80,
@@ -79,7 +79,7 @@
                                 "id": "[concat(resourceId('Microsoft.Network/loadBalancers','internal-lb'), '/backendAddressPools/backend')]"
                             },
                             "probe": {
-                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers','internal-lb'), '/probes/iis-probe-on-port-80')]"
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers','internal-lb'), '/probes/web-probe-on-port-80')]"
                             },
                             "protocol": "Tcp",
                             "loadDistribution": "Default",
