@@ -1,4 +1,4 @@
-# Deploy Linux Virtual Machine with Public Layer 4 Load Balancer
+# Deploy Linux Virtual Machine with Public Layer 4 Load Balancer with NAT
 
 ### ARM Reference
 
@@ -41,6 +41,6 @@ az group deployment create -g training --template-file 004-deploy.json
 
 1. How to add another VM with NAT on port 6000?
 
-2. How to force SSH through the Load Balancer?
+2. Given that the VM can also have a public IP address, how do you ensure SSH is through the Load Balancer?
 
 3. How to create a static IP with the Load Balancer?
