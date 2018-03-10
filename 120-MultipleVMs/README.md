@@ -1,4 +1,4 @@
-# Deploy Linux Virtual Machine
+# Deploy multiple Linux Virtual Machines
 
 ### ARM Reference
 * [ARM Function: concat](https://docs.microsoft.com/en-us/azure/azure-resource-manager/resource-group-template-functions-array#concat)
