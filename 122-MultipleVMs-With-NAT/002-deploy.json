@@ -1,0 +1,203 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "vmQuantity": {
+            "type": "int",
+            "minValue": 1
+        },
+        "vmUsername": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 10
+        },
+        "vmPassword": {
+            "type": "securestring",
+            "minLength": 1
+        }
+    },
+    "variables": {},
+    "resources": [
+        {
+            "type": "Microsoft.Compute/availabilitySets",
+            "name": "avset",
+            "apiVersion": "2017-12-01",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "platformUpdateDomainCount": 5,
+                "platformFaultDomainCount": 2
+            },
+            "sku": {
+                "name": "Aligned"
+            }
+        },
+        {
+            "apiVersion": "2017-10-01",
+            "type": "Microsoft.Network/virtualNetworks",
+            "name": "vnet",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "10.0.0.0/16"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "frontend",
+                        "properties": {
+                            "addressPrefix": "10.0.0.0/24"
+                        }
+                    },
+                    {
+                        "name": "backend",
+                        "properties": {
+                            "addressPrefix": "10.0.1.0/24"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2017-10-01",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "name": "public-lb-ip",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic",
+                "dnsSettings": {
+                    "domainNameLabel": "[uniqueString(resourceGroup().name)]"
+                }
+            }
+        },
+        {
+            "name": "public-lb",
+            "type": "Microsoft.Network/loadBalancers",
+            "apiVersion": "2017-10-01",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Basic"
+            },
+            "dependsOn": [
+                "Microsoft.Network/publicIPAddresses/public-lb-ip"
+            ],
+            "properties": {
+                "frontendIPConfigurations": [
+                    {
+                        "name": "LBFrontEnd-1",
+                        "properties": {
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses','public-lb-ip')]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "copy": {
+                "name": "lbNatLoop",
+                "count": "[parameters('vmQuantity')]"
+            },
+            "apiVersion": "2017-10-01",
+            "type": "Microsoft.Network/loadBalancers/inboundNatRules",
+            "name": "[concat('public-lb/nat-ssh-', copyIndex())]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "Microsoft.Network/loadBalancers/public-lb"
+            ],
+            "properties": {
+                "frontendIPConfiguration": {
+                    "id": "[concat(resourceId('Microsoft.Network/loadBalancers','public-lb'), '/frontendIPConfigurations/LBFrontEnd-1')]"
+                },
+                "protocol": "tcp",
+                "frontendPort": "[copyIndex(5000)]",
+                "backendPort": 22,
+                "enableFloatingIP": false
+            }
+        },
+        {
+            "copy": {
+                "name": "nicLoop",
+                "count": "[parameters('vmQuantity')]"
+            },
+            "apiVersion": "2017-10-01",
+            "type": "Microsoft.Network/networkInterfaces",
+            "name": "[concat('vm-nic-', copyIndex())]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "Microsoft.Network/virtualNetworks/vnet",
+                "[concat('Microsoft.Network/loadBalancers/public-lb/inboundNatRules/nat-ssh-', copyIndex())]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[concat(resourceId('Microsoft.Network/virtualNetworks', 'vnet'), '/subnets/backend')]"
+                            },
+                            "loadBalancerInboundNatRules": [
+                                {
+                                    "id": "[concat(resourceId('Microsoft.Network/loadBalancers', 'public-lb'), '/inboundNatRules/nat-ssh-', copyIndex())]"
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "copy": {
+                "name": "vmLoop",
+                "count": "[parameters('vmQuantity')]"
+            },
+            "apiVersion": "2017-12-01",
+            "type": "Microsoft.Compute/virtualMachines",
+            "name": "[concat('vm-', copyIndex())]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "Microsoft.Compute/availabilitySets/avset",
+                "[concat('Microsoft.Network/networkInterfaces/vm-nic-', copyIndex())]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "Standard_DS1_v2"
+                },
+                "osProfile": {
+                    "computerName": "vm",
+                    "adminUsername": "[parameters('vmUsername')]",
+                    "adminPassword": "[parameters('vmPassword')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "Canonical",
+                        "offer": "UbuntuServer",
+                        "sku": "16.04-LTS",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "name": "[concat('vm-osdisk-', copyIndex())]",
+                        "caching": "ReadWrite",
+                        "createOption": "FromImage",
+                        "managedDisk": {
+                            "storageAccountType": "Premium_LRS"
+                        }
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', concat('vm-nic-', copyIndex()))]"
+                        }
+                    ]
+                },
+                "availabilitySet": {
+                    "id": "[resourceId('Microsoft.Compute/availabilitySets', 'avset')]"
+                }
+            }
+        }
+    ],
+    "outputs": {}
+}
