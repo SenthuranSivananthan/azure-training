@@ -1,4 +1,4 @@
-# Deploy Linux Virtual Machine
+# Deploy Linux Virtual Machine with Public IP
 
 ### ARM Reference
 
