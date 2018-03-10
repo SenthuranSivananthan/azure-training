@@ -1,0 +1,95 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {},
+    "variables": {},
+    "resources": [
+        {
+            "apiVersion": "2017-10-01",
+            "type": "Microsoft.Network/virtualNetworks",
+            "name": "vnet",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "10.0.0.0/16"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "frontend",
+                        "properties": {
+                            "addressPrefix": "10.0.0.0/24"
+                        }
+                    },
+                    {
+                        "name": "backend",
+                        "properties": {
+                            "addressPrefix": "10.0.1.0/24"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "internal-lb",
+            "type": "Microsoft.Network/loadBalancers",
+            "apiVersion": "2017-10-01",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Basic"
+            },
+            "properties": {
+                "backendAddressPools": [
+                    {
+                        "name": "backend"
+                    }
+                ],
+                "frontendIPConfigurations": [
+                    {
+                        "name": "LBFrontEnd-1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[concat(resourceId('Microsoft.Network/virtualNetworks', 'vnet'), '/subnets/frontend')]"
+                            }
+                        }
+                    }
+                ],
+                "probes": [
+                    {
+                        "name": "iis-probe-on-port-80",
+                        "properties": {
+                            "protocol": "http",
+                            "port": 80,
+                            "intervalInSeconds": 5,
+                            "numberOfProbes": 2,
+                            "requestPath": "/"
+                        }
+                    }
+                ],
+                "loadBalancingRules": [
+                    {
+                        "name": "lbrule-port-80",
+                        "properties": {
+                            "frontendIPConfiguration": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers','internal-lb'), '/frontendIPConfigurations/LBFrontEnd-1')]"
+                            },
+                            "backendAddressPool": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers','internal-lb'), '/backendAddressPools/backend')]"
+                            },
+                            "probe": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers','internal-lb'), '/probes/iis-probe-on-port-80')]"
+                            },
+                            "protocol": "Tcp",
+                            "loadDistribution": "Default",
+                            "frontendPort": 80,
+                            "backendPort": 80
+                        }
+                    }
+                ]
+            }
+        }
+    ],
+    "outputs": {}
+}
