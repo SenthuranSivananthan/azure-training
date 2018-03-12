@@ -1,0 +1,284 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "vmUsername": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 10
+        },
+        "vmPassword": {
+            "type": "securestring",
+            "minLength": 1
+        }
+    },
+    "variables": {
+        "vmSKU": "Standard_DS3_v2"
+    },
+    "resources": [
+        {
+            "name": "nsg",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2017-10-01",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "AllowHTTP",
+                        "properties": {
+                            "description": "Allow HTTP to all VMs in the subnet",
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "Internet",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "8080",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "AllowSSH",
+                        "properties": {
+                            "description": "Allow SSH to all VMs in the subnet",
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "Internet",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 110,
+                            "direction": "Inbound"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2017-10-01",
+            "type": "Microsoft.Network/virtualNetworks",
+            "name": "vnet",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "Microsoft.Network/networkSecurityGroups/nsg"
+            ],
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "10.0.0.0/16"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "frontend",
+                        "properties": {
+                            "addressPrefix": "10.0.0.0/24"
+                        }
+                    },
+                    {
+                        "name": "backend",
+                        "properties": {
+                            "addressPrefix": "10.0.1.0/24",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'nsg')]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2017-10-01",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "name": "public-lb-ip",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic",
+                "dnsSettings": {
+                    "domainNameLabel": "[uniqueString(resourceGroup().name)]"
+                }
+            }
+        },
+        {
+            "name": "public-lb",
+            "type": "Microsoft.Network/loadBalancers",
+            "apiVersion": "2017-10-01",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Basic"
+            },
+            "dependsOn": [
+                "Microsoft.Network/publicIPAddresses/public-lb-ip"
+            ],
+            "properties": {
+                "backendAddressPools": [
+                    {
+                        "name": "backend"
+                    }
+                ],
+                "frontendIPConfigurations": [
+                    {
+                        "name": "LBFrontEnd-1",
+                        "properties": {
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses','public-lb-ip')]"
+                            }
+                        }
+                    }
+                ],
+                "probes": [
+                    {
+                        "name": "http-probe",
+                        "properties": {
+                            "protocol": "Tcp",
+                            "port": 8080,
+                            "intervalInSeconds": 5,
+                            "numberOfProbes": 2
+                        }
+                    }
+                ],
+                "loadBalancingRules": [
+                    {
+                        "name": "lbrule-http",
+                        "properties": {
+                            "frontendIPConfiguration": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers','public-lb'), '/frontendIPConfigurations/LBFrontEnd-1')]"
+                            },
+                            "backendAddressPool": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers','public-lb'), '/backendAddressPools/backend')]"
+                            },
+                            "probe": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers','public-lb'), '/probes/http-probe')]"
+                            },
+                            "protocol": "Tcp",
+                            "loadDistribution": "Default",
+                            "frontendPort": 80,
+                            "backendPort": 8080
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2017-10-01",
+            "type": "Microsoft.Network/loadBalancers/inboundNatRules",
+            "name": "public-lb/nat-ssh",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "Microsoft.Network/loadBalancers/public-lb"
+            ],
+            "properties": {
+                "frontendIPConfiguration": {
+                    "id": "[concat(resourceId('Microsoft.Network/loadBalancers','public-lb'), '/frontendIPConfigurations/LBFrontEnd-1')]"
+                },
+                "protocol": "tcp",
+                "frontendPort": 5000,
+                "backendPort": 22,
+                "enableFloatingIP": false
+            }
+        },
+        {
+            "apiVersion": "2017-10-01",
+            "type": "Microsoft.Network/networkInterfaces",
+            "name": "vm-nic",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "vm-nic"
+            },
+            "dependsOn": [
+                "Microsoft.Network/virtualNetworks/vnet",
+                "Microsoft.Network/loadBalancers/public-lb",
+                "Microsoft.Network/loadBalancers/public-lb/inboundNatRules/nat-ssh"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[concat(resourceId('Microsoft.Network/virtualNetworks', 'vnet'), '/subnets/backend')]"
+                            },
+                            "loadBalancerBackendAddressPools": [
+                                {
+                                    "id": "[concat(resourceId('Microsoft.Network/loadBalancers', 'public-lb'), '/backendAddressPools/backend')]"
+                                }
+                            ],
+                            "loadBalancerInboundNatRules": [
+                                {
+                                    "id": "[concat(resourceId('Microsoft.Network/loadBalancers', 'public-lb'), '/inboundNatRules/nat-ssh')]"
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2017-12-01",
+            "type": "Microsoft.Compute/virtualMachines",
+            "name": "vm",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "Microsoft.Network/networkInterfaces/vm-nic"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[variables('vmSKU')]"
+                },
+                "osProfile": {
+                    "computerName": "vm",
+                    "adminUsername": "[parameters('vmUsername')]",
+                    "adminPassword": "[parameters('vmPassword')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "Canonical",
+                        "offer": "UbuntuServer",
+                        "sku": "16.04-LTS",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "name": "vm-osdisk",
+                        "caching": "ReadWrite",
+                        "createOption": "FromImage",
+                        "managedDisk": {
+                            "storageAccountType": "Premium_LRS"
+                        }
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', 'vm-nic')]"
+                        }
+                    ]
+                }
+            },
+            "resources": [
+                {
+                    "name": "Install-Tomcat",
+                    "type": "extensions",
+                    "location": "[resourceGroup().location]",
+                    "apiVersion": "2017-12-01",
+                    "dependsOn": [
+                        "Microsoft.Compute/virtualMachines/vm"
+                    ],
+                    "properties": {
+                        "publisher": "Microsoft.Azure.Extensions",
+                        "type": "CustomScript",
+                        "typeHandlerVersion": "2.0",
+                        "autoUpgradeMinorVersion": true,
+                        "settings": {
+                            "fileUris": [
+                                "https://raw.githubusercontent.com/SenthuranSivananthan/azure-training/master/109-SingleVM-CustomScript/ubuntu/install.sh"
+                            ],
+                            "commandToExecute": "sh install.sh"
+                        }
+                    }
+                }
+            ]
+        }
+    ],
+    "outputs": {}
+}
